@@ -1,0 +1,4 @@
+interface:
+  display_name: "白板動畫｜保留原圖"
+  short_description: "保留原圖造型與配色，以局部揭露和筆尖跟隨製作影片與電子書"
+  default_prompt: "使用 $whiteboard-preserve-art，保留我提供的圖片製作白板影片與電子書，先詢問缺少的條件。"
