@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Portable manifest checker. Python 3.9+. Does not render or visually verify media."""
+"""Portable manifest checker (preserve + stroke routes). Python 3.9+. Does not render or visually verify media."""
 import argparse
 import hashlib
 import json
 import math
 from pathlib import Path
 
-ROUTE = 'preserve'
+VALID_ROUTES = ('preserve', 'stroke')
 
 def digest(p):
     h = hashlib.sha256()
@@ -37,7 +37,9 @@ def validate(root):
         if not isinstance(m, dict): raise ValueError('project must be an object')
     except (OSError, ValueError) as e:
         return ['Cannot read project: ' + str(e)]
-    if m.get('route') != ROUTE: fail('Route does not match this skill')
+    route = m.get('route')
+    if route not in VALID_ROUTES:
+        fail('Route must be one of ' + '/'.join(VALID_ROUTES)); route = 'preserve'
     if m.get('stage') not in {'draft','planned','production','complete'}: fail('Unknown stage')
     if m.get('stage') == 'draft': return errors
     canvas = m.get('canvas', {})
@@ -53,7 +55,7 @@ def validate(root):
         if key in amap: fail('Duplicate asset ID: '+key)
         amap[key] = a
         if m.get('stage') not in {'production','complete'}: continue
-        if ROUTE == 'preserve':
+        if route == 'preserve':
             p = file(a.get('source'), key+' source')
             if p and digest(p) != a.get('source_sha256'): fail(key+': source hash mismatch')
             size, crop = a.get('source_size'), a.get('crop')
@@ -80,7 +82,7 @@ def validate(root):
                     pts = line['points']
                     if not isinstance(pts,list) or len(pts)<2 or not all(isinstance(p,list) and len(p)==2 and all(number(v) for v in p) for p in pts): raise ValueError('invalid points')
                     if sum(math.dist(a,b) for a,b in zip(pts,pts[1:]))<=0: raise ValueError('zero-length path')
-                    width = line.get('brush_width' if ROUTE=='preserve' else 'width')
+                    width = line.get('brush_width' if route=='preserve' else 'width')
                     if not number(width) or width<=0: raise ValueError('invalid width')
             except (OSError,ValueError,KeyError,TypeError) as e: fail(key+': invalid '+path_kind+': '+str(e))
     scenes = objects(m.get('scenes',[]),'scenes'); intervals=[];seen=set()
@@ -151,14 +153,17 @@ def validate(root):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     sub=parser.add_subparsers(dest='command',required=True)
-    for name in ['init','check','hash']:
-        sub.add_parser(name).add_argument('path',type=Path)
+    sub.add_parser('check').add_argument('path',type=Path)
+    sub.add_parser('hash').add_argument('path',type=Path)
+    p_init=sub.add_parser('init')
+    p_init.add_argument('path',type=Path)
+    p_init.add_argument('--route',choices=VALID_ROUTES,default='preserve')
     args=parser.parse_args()
     try:
         if args.command=='hash':print(digest(args.path));return 0
         if args.command=='init':
             args.path.mkdir(parents=True,exist_ok=True);p=args.path/'project.json'
-            with p.open('x',encoding='utf-8') as f:json.dump({'route':ROUTE,'stage':'draft','duration':None,'canvas':{},'deliverables':[],'assets':[],'scenes':[],'cues':[],'chapters':[],'ebook_pages':[],'outputs':[]},f,ensure_ascii=False,indent=2)
+            with p.open('x',encoding='utf-8') as f:json.dump({'route':args.route,'stage':'draft','duration':None,'canvas':{},'deliverables':[],'assets':[],'scenes':[],'cues':[],'chapters':[],'ebook_pages':[],'outputs':[]},f,ensure_ascii=False,indent=2)
             print(p);return 0
         errors=validate(args.path)
         if errors:
